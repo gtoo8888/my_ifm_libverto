@@ -1,6 +1,7 @@
 #include <verto.h>
 #include "test.h"
 
-void do_test(verto_ctx *ctx){
+int do_test(verto_ctx *ctx){
     printf("signal.c\n");
+    return 0;
 }

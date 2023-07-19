@@ -35,3 +35,4 @@ build/
 .vscode/settings.json
 output/
 bin/
+core.*

@@ -1,7 +1,8 @@
 #include "test.h"
 
-void do_test(verto_ctx *ctx){
+int do_test(verto_ctx *ctx){
     printf("write.c\n");
+    return 0;
 }
 
 

@@ -3,20 +3,24 @@ project(mylibverto)
 
 set(LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -std=c++11 ")
 
 aux_source_directory(src SRC_LIST)
 
 include_directories(/usr/local/include)
 
-# 添加测试程序的源文件
 set(test_sources
-  src/signal.cc
-  src/write.cc
-  src/read.cc
+  # src/signal.cc
+  # src/write.cc
+  # src/read.cc
+  src/timeout.cc
 )
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
+
+# 启用测试功能
+enable_testing()
+
 
 # 添加测试程序的可执行目标
 foreach(test_source ${test_sources})
