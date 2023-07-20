@@ -1,4 +1,5 @@
-#include "test.h"
+#include "ifm_libverto_test.h"
+#include "ifm_verto.h"
 #include <signal.h>
 
 std::vector<std::string> module = {
@@ -6,6 +7,11 @@ std::vector<std::string> module = {
     "libev",
     "libevent",
 };
+
+
+
+
+
 
 struct gssproxy_ctx {
     bool userproxymode;
@@ -110,15 +116,17 @@ int init_event_fini(verto_ctx *vctx){
 
 
 
-
-
 int main(int argc,char **argv){
     verto_ctx *ctx;
+
+    test_covert();
+
+
 
     init_event_loop();
 
 
-    init_event_fini(ctx);
+    // init_event_fini(ctx);
 
     // for (int i = 0;i < module.size(); i++){
     //     std::cout << module[i] << std::endl;

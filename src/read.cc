@@ -1,5 +1,5 @@
 #include <verto.h>
-#include "test.h"
+#include "ifm_libverto_test.h"
 
 int do_test(verto_ctx *ctx){
     // callcount = 0;

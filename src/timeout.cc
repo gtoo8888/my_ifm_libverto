@@ -1,4 +1,4 @@
-#include "test.h"
+#include "ifm_libverto_test.h"
 
 #include <sys/time.h>
 

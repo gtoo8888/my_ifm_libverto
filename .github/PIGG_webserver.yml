@@ -1,0 +1,23 @@
+name: PIGG_webserver
+on:
+  push: # 当推送到指定分支的时候，触发构建流程
+    branches:
+      - 'main'
+jobs:
+  PIGG_webserver_test_job:   
+    name: my_ifm_libverto_build_test
+    runs-on: ubuntu-20.04  # 选择要使用的镜像版本
+    steps: 
+      - uses: actions/checkout@v2 # 要作为作业运行的可重用工作流程文件的位置和版本
+
+      - name: install packages    # 看起来这个库很全，不用apt update，也不用安装
+        run: |                    
+          sudo apt install gcc g++ cmake -y      # 正确的安装方式
+          
+      - name: build pro && cmake
+        run: |
+          bash ./autobuild.sh
+
+
+
+  
