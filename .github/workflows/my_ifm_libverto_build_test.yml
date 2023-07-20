@@ -2,7 +2,7 @@ name: PIGG_webserver
 on:
   push: # 当推送到指定分支的时候，触发构建流程
     branches:
-      - 'main'
+      - 'master'
 jobs:
   my_ifm_libverto_build_test:   
     name: my_ifm_libverto_build_test
