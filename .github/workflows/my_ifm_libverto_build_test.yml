@@ -4,7 +4,7 @@ on:
     branches:
       - 'main'
 jobs:
-  PIGG_webserver_test_job:   
+  my_ifm_libverto_build_test:   
     name: my_ifm_libverto_build_test
     runs-on: ubuntu-20.04  # 选择要使用的镜像版本
     steps: 
