@@ -36,3 +36,4 @@ build/
 output/
 bin/
 core.*
+tmp/

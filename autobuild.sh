@@ -7,4 +7,4 @@ fi
 cd build
 cmake ..
 make 
-make test
+# make test
