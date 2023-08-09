@@ -17,7 +17,7 @@
             "cwd": "${workspaceFolder}/output",    //调试时的工作目录
             "environment": [],          //不知道干嘛的
             "internalConsoleOptions": "openOnSessionStart",
-            "externalConsole": true,   //调试时是否显示控制台窗口
+            "externalConsole": false,   //调试时是否显示控制台窗口
             "MIMode": "gdb",            //指定连接的调试器，可以省略不写
             "setupCommands": [
                 {

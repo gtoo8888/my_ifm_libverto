@@ -1,6 +1,10 @@
 #include "ifm_verto.h"
 #include "ifm_verto_module.h"
 
+#include <pthread.h>
+#include <stdio.h>
+#include <assert.h>
+#include <string.h>
 
 
 struct verto_ctx {
@@ -52,14 +56,161 @@ struct module_record {
     verto_ctx *defctx;
 };
 
+#ifdef BUILTIN_MODULE
+#define _MODTABLE(n) verto_module_table_ ## n
+#define MODTABLE(n) _MODTABLE(n)
+/*
+ * This symbol can be used when embedding verto.c in a library along with a
+ * built-in private module, to preload the module instead of dynamically
+ * linking it in later.  Define to <modulename>.
+ */
+extern verto_module MODTABLE(BUILTIN_MODULE);
+static module_record builtin_record = {
+    NULL, &MODTABLE(BUILTIN_MODULE), NULL, "", NULL
+};
+static module_record *loaded_modules = &builtin_record;
+#else
 static module_record *loaded_modules;
+#endif
 
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+static pthread_mutex_t loaded_modules_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+#define mutex_lock(x) { \
+        int c = pthread_mutex_lock(x); \
+        if (c != 0) { \
+            fprintf(stderr, "pthread_mutex_lock returned %d (%s) in %s", \
+                    c, strerror(c), __FUNCTION__); \
+        } \
+        assert(c == 0); \
+    }
+#define mutex_unlock(x) { \
+        int c = pthread_mutex_unlock(x); \
+        if (c != 0) { \
+            fprintf(stderr, "pthread_mutex_unlock returned %d (%s) in %s", \
+                    c, strerror(c), __FUNCTION__); \
+        } \
+        assert(c == 0); \
+    }
+#define mutex_destroy(x) { \
+        int c = pthread_mutex_destroy(x); \
+        if (c != 0) { \
+            fprintf(stderr, "pthread_mutex_destroy returned %d (%s) in %s", \
+                    c, strerror(c), __FUNCTION__); \
+        } \
+        assert(c == 0); \
+    }
+
+
+static int
+load_module(const char *impl, verto_ev_type reqtypes, module_record **record)
+{
+    int success = 0;
+#ifndef BUILTIN_MODULE
+    // char *prefix = NULL;
+    // char *suffix = NULL;
+    // char *tmp = NULL;
+#endif
+
+    /* Check the cache */
+    mutex_lock(&loaded_modules_mutex);
+    if (impl) {
+        for (*record = loaded_modules ; *record ; *record = (*record)->next) {
+            if ((strchr(impl, '/') && !strcmp(impl, (*record)->filename))
+                    || !strcmp(impl, (*record)->module->name)) {
+                mutex_unlock(&loaded_modules_mutex);
+                return 1;
+            }
+        }
+    } else if (loaded_modules) {
+        for (*record = loaded_modules ; *record ; *record = (*record)->next) {
+            if (reqtypes == VERTO_EV_TYPE_NONE
+                    || ((*record)->module->types & reqtypes) == reqtypes) {
+                mutex_unlock(&loaded_modules_mutex);
+                return 1;
+            }
+        }
+    }
+    mutex_unlock(&loaded_modules_mutex);
+
+#ifndef BUILTIN_MODULE
+    if (!module_get_filename_for_symbol(verto_convert_module, &prefix))
+        return 0;
+
+    /* Example output:
+     *    prefix == /usr/lib/libverto-
+     *    impl == glib
+     *    suffix == .so.0
+     * Put them all together: /usr/lib/libverto-glib.so.0 */
+    tmp = strdup(prefix);
+    if (!tmp) {
+        free(prefix);
+        return 0;
+    }
+
+    suffix = basename(tmp);
+    suffix = strchr(suffix, '.');
+    if (!suffix || strlen(suffix) < 1 || !(suffix = strdup(suffix))) {
+        free(prefix);
+        free(tmp);
+        return 0;
+    }
+    strcpy(prefix + strlen(prefix) - strlen(suffix), "-");
+    free(tmp);
+
+    if (impl) {
+        /* Try to do a load by the path */
+        if (!success && strchr(impl, '/'))
+            success = do_load_file(impl, 0, reqtypes, record);
+        if (!success) {
+            /* Try to do a load by the name */
+            tmp = string_aconcat(prefix, impl, suffix);
+            if (tmp) {
+                success = do_load_file(tmp, 0, reqtypes, record);
+                free(tmp);
+            }
+        }
+    } else {
+        /* NULL was passed, so we will use the dirname of
+         * the prefix to try and find any possible plugins */
+        tmp = strdup(prefix);
+        if (tmp) {
+            char *dname = strdup(dirname(tmp));
+            free(tmp);
+
+            tmp = strdup(basename(prefix));
+            free(prefix);
+            prefix = tmp;
+
+            if (dname && prefix) {
+                /* Attempt to find a module we are already linked to */
+                success = do_load_dir(dname, prefix, suffix, 1, reqtypes,
+                                      record);
+                if (!success) {
+#ifdef DEFAULT_MODULE
+                    /* Attempt to find the default module */
+                    success = load_module(DEFAULT_MODULE, reqtypes, record);
+                    if (!success)
+#endif /* DEFAULT_MODULE */
+                        /* Attempt to load any plugin (we're desperate) */
+                        success = do_load_dir(dname, prefix, suffix, 0,
+                                              reqtypes, record);
+                }
+            }
+
+            free(dname);
+        }
+    }
+
+    free(suffix);
+    free(prefix);
+#endif /* BUILTIN_MODULE */
+    return success;
+}
 
 
 
@@ -74,10 +225,10 @@ static module_record *loaded_modules;
 verto_ctx *
 verto_default(const char *impl, verto_ev_type reqtypes)
 {
-    // module_record *mr = NULL;
+    module_record *mr = NULL;
 
-    // if (!load_module(impl, reqtypes, &mr))
-    //     return NULL;
+    if (!load_module(impl, reqtypes, &mr))
+        return NULL;
 
     // return verto_convert_module(mr->module, 1, NULL);
 }
@@ -138,3 +289,4 @@ verto_free(verto_ctx *ctx)
 
     // vfree(ctx);
 }
+

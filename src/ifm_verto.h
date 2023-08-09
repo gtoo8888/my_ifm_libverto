@@ -3,20 +3,15 @@
 
 #include <stdlib.h>
 
-// #include "ifm_verto_module.h"
-// #include "utils.h"
+#define BUILTIN_MODULE libhv
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif /* __cplusplus */
 
-typedef void verto_mod_ctx;
-typedef void verto_mod_ev;
-
 typedef struct verto_ctx verto_ctx;
 typedef struct verto_ev verto_ev;
-
 
 
 typedef enum {

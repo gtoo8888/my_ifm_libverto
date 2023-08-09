@@ -8,9 +8,12 @@
 typedef pid_t verto_proc;
 typedef int verto_proc_status;
 
-
+// 具体的类型已经定义了，这边就不定义了
+#ifndef VERTO_MODULE_TYPES
+#define VERTO_MODULE_TYPES
 typedef void verto_mod_ctx;
 typedef void verto_mod_ev;
+#endif
 
 #define VERTO_MODULE_VERSION 3
 #define VERTO_MODULE_TABLE(name) verto_module_table_ ## name
@@ -34,16 +37,16 @@ typedef void verto_mod_ev;
         types, \
         &name ## _funcs, \
     }; \
-    verto_ctx * \
-    verto_new_ ## name() \
-    { \
-        return verto_convert(name, 0, NULL); \
-    } \
-    verto_ctx * \
-    verto_default_ ## name() \
-    { \
-        return verto_convert(name, 1, NULL); \
-    }
+    // verto_ctx * \
+    // verto_new_ ## name() \
+    // { \
+    //     return verto_convert(name, 0, NULL); \
+    // } \
+    // verto_ctx * \
+    // verto_default_ ## name() \
+    // { \
+    //     return verto_convert(name, 1, NULL); \
+    // }
 
 typedef struct {
     /* Required */ verto_mod_ctx *(*ctx_new)();
