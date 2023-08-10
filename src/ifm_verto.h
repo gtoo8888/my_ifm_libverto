@@ -13,7 +13,6 @@ extern "C"
 typedef struct verto_ctx verto_ctx;
 typedef struct verto_ev verto_ev;
 
-
 typedef enum {
     VERTO_EV_TYPE_NONE = 0,
     VERTO_EV_TYPE_IO = 1,
@@ -42,6 +41,8 @@ typedef enum {
     _VERTO_EV_FLAG_MAX = VERTO_EV_FLAG_IO_CLOSE_FD
 } verto_ev_flag;
 
+// 暂时不明
+typedef void (verto_callback)(verto_ctx *ctx, verto_ev *ev);
 
 
 verto_ctx *
@@ -54,7 +55,31 @@ void
 verto_break(verto_ctx *ctx);
 
 void
+verto_del(verto_ev *ev);
+
+void
 verto_free(verto_ctx *ctx);
+
+void
+verto_cleanup(void);
+
+void *
+verto_get_private(const verto_ev *ev);
+
+verto_ev *
+verto_add_signal(verto_ctx *ctx, verto_ev_flag flags,
+                 verto_callback *callback, int signal);
+
+verto_ev *
+verto_add_io(verto_ctx *ctx, verto_ev_flag flags,
+             verto_callback *callback, int fd);
+
+verto_ev *
+verto_add_timeout(verto_ctx *ctx, verto_ev_flag flags,
+                  verto_callback *callback, time_t interval);
+
+int
+verto_get_fd(const verto_ev *ev);
 
 #ifdef __cplusplus
 } /* extern "C" */

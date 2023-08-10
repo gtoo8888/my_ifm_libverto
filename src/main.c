@@ -62,7 +62,7 @@ int main(int argc,char **argv){
     if (retval != 0)
         return retval;
 
-    // verto_cleanup();
+    verto_cleanup();
 
     return retval;
 }

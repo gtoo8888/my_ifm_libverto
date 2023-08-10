@@ -1,11 +1,11 @@
-#include "ifm_verto.h"
-#include "ifm_verto_module.h"
-
 #include <pthread.h>
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
 
+#include "ifm_verto.h"
+#include "ifm_verto_module.h"
+#include "module.h"
 
 struct verto_ctx {
     size_t ref;
@@ -30,8 +30,8 @@ struct verto_ev {
     verto_ev *next;
     verto_ctx *ctx;
     verto_ev_type type;
-    // verto_callback *callback;
-    // verto_callback *onfree;
+    verto_callback *callback;
+    verto_callback *onfree;
     void *priv;
     verto_mod_ev *ev;
     verto_ev_flag flags;
@@ -74,6 +74,20 @@ static module_record *loaded_modules;
 #endif
 
 
+static void *(*resize_cb)(void *mem, size_t size);
+#define vfree(mem) vresize(mem, 0)
+static void *
+vresize(void *mem, size_t size)
+{
+    if (!resize_cb)
+        resize_cb = &realloc;
+    if (size == 0 && resize_cb == &realloc) {
+        /* Avoid memleak as realloc(X, 0) can return a free-able pointer. */
+        free(mem);
+        return NULL;
+    }
+    return (*resize_cb)(mem, size);
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -111,11 +125,12 @@ load_module(const char *impl, verto_ev_type reqtypes, module_record **record)
 {
     int success = 0;
 #ifndef BUILTIN_MODULE
-    // char *prefix = NULL;
-    // char *suffix = NULL;
-    // char *tmp = NULL;
+    char *prefix = NULL;
+    char *suffix = NULL;
+    char *tmp = NULL;
 #endif
 
+    static module_record *t1 = &builtin_record;
     /* Check the cache */
     mutex_lock(&loaded_modules_mutex);
     if (impl) {
@@ -213,9 +228,103 @@ load_module(const char *impl, verto_ev_type reqtypes, module_record **record)
 }
 
 
+static void
+remove_ev(verto_ev **origin, verto_ev *item)
+{
+    if (!origin || !*origin || !item)
+        return;
+
+    if (*origin == item)
+        *origin = (*origin)->next;
+    else
+        remove_ev(&((*origin)->next), item);
+}
 
 
 
+verto_ctx *
+verto_convert_module(const verto_module *module, int deflt, verto_mod_ctx *mctx)
+{
+    verto_ctx *ctx = NULL;
+    module_record *mr;
+
+    if (!module)
+        return NULL;
+
+    if (deflt) {
+        mutex_lock(&loaded_modules_mutex);
+        for (mr = loaded_modules ; mr ; mr = mr->next) {
+            verto_ctx *tmp;
+            if (mr->module == module && mr->defctx) {
+                if (mctx)
+                    module->funcs->ctx_free(mctx);
+                tmp = mr->defctx;
+                tmp->ref++;
+                mutex_unlock(&loaded_modules_mutex);
+                return tmp;
+            }
+        }
+        mutex_unlock(&loaded_modules_mutex);
+    }
+
+    if (!mctx) {
+        mctx = deflt
+                    ? (module->funcs->ctx_default
+                        ? module->funcs->ctx_default()
+                        : module->funcs->ctx_new())
+                    : module->funcs->ctx_new();
+        if (!mctx)
+            goto error;
+    }
+
+    ctx = vresize(NULL, sizeof(verto_ctx));
+    if (!ctx)
+        goto error;
+    memset(ctx, 0, sizeof(verto_ctx));
+
+    ctx->ref = 1;
+    ctx->ctx = mctx;
+    ctx->module = module;
+    ctx->deflt = deflt;
+
+    if (deflt) {
+        module_record **tmp;
+
+        mutex_lock(&loaded_modules_mutex);
+        tmp = &loaded_modules;
+        for (mr = loaded_modules ; mr ; mr = mr->next) {
+            if (mr->module == module) {
+                assert(mr->defctx == NULL);
+                mr->defctx = ctx;
+                mutex_unlock(&loaded_modules_mutex);
+                return ctx;
+            }
+
+            if (!mr->next) {
+                tmp = &mr->next;
+                break;
+            }
+        }
+        mutex_unlock(&loaded_modules_mutex);
+
+        *tmp = vresize(NULL, sizeof(module_record));
+        if (!*tmp) {
+            vfree(ctx);
+            goto error;
+        }
+
+        memset(*tmp, 0, sizeof(module_record));
+        (*tmp)->defctx = ctx;
+        (*tmp)->module = module;
+    }
+
+    return ctx;
+
+error:
+    if (mctx)
+        module->funcs->ctx_free(mctx);
+    return NULL;
+}
 
 
 
@@ -240,13 +349,13 @@ verto_run(verto_ctx *ctx)
     if (!ctx)
         return;
 
-    // if (ctx->module->funcs->ctx_break && ctx->module->funcs->ctx_run)
-    //     ctx->module->funcs->ctx_run(ctx->ctx);
-    // else {
-    //     while (!ctx->exit)
-    //         ctx->module->funcs->ctx_run_once(ctx->ctx);
-    //     ctx->exit = 0;
-    // }
+    if (ctx->module->funcs->ctx_break && ctx->module->funcs->ctx_run)
+        ctx->module->funcs->ctx_run(ctx->ctx);
+    else {
+        while (!ctx->exit)
+            ctx->module->funcs->ctx_run_once(ctx->ctx);
+        ctx->exit = 0;
+    }
 }
 
 
@@ -256,37 +365,144 @@ verto_break(verto_ctx *ctx)
     if (!ctx)
         return;
 
-    // if (ctx->module->funcs->ctx_break && ctx->module->funcs->ctx_run)
-    //     ctx->module->funcs->ctx_break(ctx->ctx);
-    // else
-    //     ctx->exit = 1;
+    if (ctx->module->funcs->ctx_break && ctx->module->funcs->ctx_run)
+        ctx->module->funcs->ctx_break(ctx->ctx);
+    else
+        ctx->exit = 1;
 }
 
+void
+verto_del(verto_ev *ev)
+{
+    if (!ev)
+        return;
+
+    /* If the event is freed in the callback, we just set a flag so that
+     * verto_fire() can actually do the delete when the callback completes.
+     *
+     * If we don't do this, than verto_fire() will access freed memory. */
+    if (ev->depth > 0) {
+        ev->deleted = 1;
+        return;
+    }
+
+    if (ev->onfree)
+        ev->onfree(ev->ctx, ev);
+    ev->ctx->module->funcs->ctx_del(ev->ctx->ctx, ev, ev->ev);
+    remove_ev(&(ev->ctx->events), ev);
+
+    if ((ev->type == VERTO_EV_TYPE_IO) &&
+        (ev->flags & VERTO_EV_FLAG_IO_CLOSE_FD) &&
+        !(ev->actual & VERTO_EV_FLAG_IO_CLOSE_FD))
+        close(ev->option.io.fd);
+
+    vfree(ev);
+}
 
 void
 verto_free(verto_ctx *ctx)
 {
-    // verto_ev *cur, *next;
+    verto_ev *cur, *next;
 
-    // if (!ctx)
-    //     return;
+    if (!ctx)
+        return;
 
-    // ctx->ref = ctx->ref > 0 ? ctx->ref - 1 : 0;
-    // if (ctx->ref > 0)
-    //     return;
+    ctx->ref = ctx->ref > 0 ? ctx->ref - 1 : 0;
+    if (ctx->ref > 0)
+        return;
 
-    // /* Cancel all pending events */
-    // next = NULL;
-    // for (cur = ctx->events; cur != NULL; cur = next) {
-    //     next = cur->next;
-    //     // verto_del(cur);
-    // }
-    // ctx->events = NULL;
+    /* Cancel all pending events */
+    next = NULL;
+    for (cur = ctx->events; cur != NULL; cur = next) {
+        next = cur->next;
+        verto_del(cur);
+    }
+    ctx->events = NULL;
 
-    // /* Free the private */
-    // if (!ctx->deflt || !ctx->module->funcs->ctx_default)
-    //     ctx->module->funcs->ctx_free(ctx->ctx);
+    /* Free the private */
+    if (!ctx->deflt || !ctx->module->funcs->ctx_default)
+        ctx->module->funcs->ctx_free(ctx->ctx);
 
-    // vfree(ctx);
+    vfree(ctx);
 }
 
+void
+verto_cleanup(void)
+{
+    module_record *record;
+
+    mutex_lock(&loaded_modules_mutex);
+
+    for (record = loaded_modules; record; record = record->next) {
+        module_close(record->dll);
+        free(record->filename);
+    }
+
+    vfree(loaded_modules);
+    loaded_modules = NULL;
+
+    mutex_unlock(&loaded_modules_mutex);
+    mutex_destroy(&loaded_modules_mutex);
+}
+
+
+
+
+verto_ev *
+verto_add_signal(verto_ctx *ctx, verto_ev_flag flags,
+                 verto_callback *callback, int signal)
+{
+//     verto_ev *ev;
+
+//     if (signal < 0)
+//         return NULL;
+// #ifndef WIN32
+//     if (signal == SIGCHLD)
+//         return NULL;
+// #endif
+//     if (callback == VERTO_SIG_IGN) {
+//         callback = signal_ignore;
+//         if (!(flags & VERTO_EV_FLAG_PERSIST))
+//             return NULL;
+//     }
+//     doadd(ev, ev->option.signal = signal, VERTO_EV_TYPE_SIGNAL);
+//     return ev;
+}
+
+verto_ev *
+verto_add_io(verto_ctx *ctx, verto_ev_flag flags,
+             verto_callback *callback, int fd)
+{
+    // verto_ev *ev;
+
+    // if (fd < 0 || !(flags & (VERTO_EV_FLAG_IO_READ | VERTO_EV_FLAG_IO_WRITE)))
+    //     return NULL;
+
+    // doadd(ev, ev->option.io.fd = fd, VERTO_EV_TYPE_IO);
+    // return ev;
+}
+
+verto_ev *
+verto_add_timeout(verto_ctx *ctx, verto_ev_flag flags,
+                  verto_callback *callback, time_t interval)
+{
+    // verto_ev *ev;
+    // doadd(ev, ev->option.interval = interval, VERTO_EV_TYPE_TIMEOUT);
+    // return ev;
+}
+
+
+void *
+verto_get_private(const verto_ev *ev)
+{
+    return ev->priv;
+}
+
+
+int
+verto_get_fd(const verto_ev *ev)
+{
+    if (ev && (ev->type == VERTO_EV_TYPE_IO))
+        return ev->option.io.fd;
+    return -1;
+}

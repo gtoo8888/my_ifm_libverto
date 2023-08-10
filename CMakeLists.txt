@@ -4,7 +4,7 @@ project(mylibverto)
 # set(LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O0") # c语言编译选项
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O0 -ldl") # c语言编译选项
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w ") # 忽略所有警告和note
 
@@ -16,6 +16,8 @@ set(sources_files
   src/ifm_verto_module.h
   src/ifm_verto_libhv.c
   src/ifm_verto_libhv.h
+  src/module.h
+  src/module.c
 )
 
 find_package(libhv REQUIRED)
