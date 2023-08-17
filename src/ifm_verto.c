@@ -328,10 +328,6 @@ error:
 }
 
 
-
-
-
-
 verto_ctx *
 verto_default(const char *impl, verto_ev_type reqtypes)
 {
@@ -481,23 +477,18 @@ push_ev(verto_ctx *ctx, verto_ev *ev)
     ctx->events->next = tmp;
 }
 
+static void
+signal_ignore(verto_ctx *ctx, verto_ev *ev)
+{
+    (void) ctx;
+    (void) ev;
+}
+
 /* Remove flags we can emulate */
 // 从给定的标志中移除可以模拟的标志
 // 移除了VERTO_EV_FLAG_PERSIST和VERTO_EV_FLAG_IO_CLOSE_FD标志位
 #define make_actual(flags) ((flags) & ~(VERTO_EV_FLAG_PERSIST|VERTO_EV_FLAG_IO_CLOSE_FD))
 
-#define doadd(ev, set, type) \
-    ev = make_ev(ctx, callback, type, flags); \
-    if (ev) { \
-        set; \
-        ev->actual = make_actual(ev->flags); \
-        ev->ev = ctx->module->funcs->ctx_add(ctx->ctx, ev, &ev->actual); \
-        if (!ev->ev) { \
-            vfree(ev); \
-            return NULL; \
-        } \
-        push_ev(ctx, ev); \
-    }
 
 verto_ev *
 verto_add_signal(verto_ctx *ctx, verto_ev_flag flags,
@@ -508,12 +499,25 @@ verto_add_signal(verto_ctx *ctx, verto_ev_flag flags,
     if (signal < 0)
         return NULL;
         
-    // if (callback == VERTO_SIG_IGN) {
-    //     callback = signal_ignore;
-    //     if (!(flags & VERTO_EV_FLAG_PERSIST))
-    //         return NULL;
-    // }
-    doadd(ev, ev->option.signal = signal, VERTO_EV_TYPE_SIGNAL);
+    if (callback == VERTO_SIG_IGN) {
+        callback = signal_ignore;
+        if (!(flags & VERTO_EV_FLAG_PERSIST))
+            return NULL;
+    }
+
+// 来自doadd
+    ev = make_ev(ctx, callback, VERTO_EV_TYPE_SIGNAL, flags); 
+    if (ev) { 
+        ev->option.signal = signal;
+        ev->actual = make_actual(ev->flags); 
+        ev->ev = ctx->module->funcs->ctx_add(ctx->ctx, ev, &ev->actual); 
+        if (!ev->ev) { 
+            vfree(ev); 
+            return NULL; 
+        } 
+        push_ev(ctx, ev); 
+    }
+// 来自doadd
     return ev;
 }
 
@@ -525,8 +529,19 @@ verto_add_io(verto_ctx *ctx, verto_ev_flag flags,
 
     if (fd < 0 || !(flags & (VERTO_EV_FLAG_IO_READ | VERTO_EV_FLAG_IO_WRITE)))
         return NULL;
-
-    doadd(ev, ev->option.io.fd = fd, VERTO_EV_TYPE_IO);
+// 来自doadd
+    ev = make_ev(ctx, callback, VERTO_EV_TYPE_IO, flags); 
+    if (ev) { 
+        ev->option.io.fd = fd;
+        ev->actual = make_actual(ev->flags); 
+        ev->ev = ctx->module->funcs->ctx_add(ctx->ctx, ev, &ev->actual); 
+        if (!ev->ev) { 
+            vfree(ev); 
+            return NULL; 
+        } 
+        push_ev(ctx, ev); 
+    }
+// 来自doadd
     return ev;
 }
 
@@ -535,17 +550,43 @@ verto_add_timeout(verto_ctx *ctx, verto_ev_flag flags,
                   verto_callback *callback, time_t interval)
 {
     verto_ev *ev;
-    doadd(ev, ev->option.interval = interval, VERTO_EV_TYPE_TIMEOUT);
+// 来自doadd
+    ev = make_ev(ctx, callback, VERTO_EV_TYPE_TIMEOUT, flags); 
+    if (ev) { 
+        ev->option.interval = interval;
+        ev->actual = make_actual(ev->flags); 
+        ev->ev = ctx->module->funcs->ctx_add(ctx->ctx, ev, &ev->actual); 
+        if (!ev->ev) { 
+            vfree(ev); 
+            return NULL; 
+        } 
+        push_ev(ctx, ev); 
+    }
+// 来自doadd
     return ev;
 }
 
 
+// gssproxy没有用到
+void
+verto_set_private(verto_ev *ev, void *priv, verto_callback *free)
+{
+    if (!ev)
+        return;
+    if (ev->onfree && free)
+        ev->onfree(ev->ctx, ev);
+    ev->priv = priv;
+    ev->onfree = free;
+}
+
+// gssproxy没有用到
 verto_ev_type
 verto_get_type(const verto_ev *ev)
 {
     return ev->type;
 }
 
+// gssproxy没有用到
 time_t
 verto_get_interval(const verto_ev *ev)
 {
@@ -554,12 +595,25 @@ verto_get_interval(const verto_ev *ev)
     return 0;
 }
 
+verto_ev_flag
+verto_get_flags(const verto_ev *ev)
+{
+    return ev->flags;
+}
+
+
+verto_ev_type
+verto_get_supported_types(verto_ctx *ctx)
+{
+    return ctx->module->types;
+}
+
+
 void *
 verto_get_private(const verto_ev *ev)
 {
     return ev->priv;
 }
-
 
 int
 verto_get_fd(const verto_ev *ev)
@@ -568,3 +622,24 @@ verto_get_fd(const verto_ev *ev)
         return ev->option.io.fd;
     return -1;
 }
+
+
+verto_ev_flag
+verto_get_fd_state(const verto_ev *ev)
+{
+    return ev->option.io.state;
+}
+
+
+// #define doadd(ev, set, type) \
+//     ev = make_ev(ctx, callback, type, flags); \
+//     if (ev) { \
+//         set; \
+//         ev->actual = make_actual(ev->flags); \
+//         ev->ev = ctx->module->funcs->ctx_add(ctx->ctx, ev, &ev->actual); \
+//         if (!ev->ev) { \
+//             vfree(ev); \
+//             return NULL; \
+//         } \
+//         push_ev(ctx, ev); \
+//     }

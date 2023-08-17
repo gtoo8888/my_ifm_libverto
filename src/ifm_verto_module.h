@@ -37,16 +37,16 @@ typedef void verto_mod_ev;
         types, \
         &name ## _funcs, \
     }; \
-    // verto_ctx * \
-    // verto_new_ ## name() \
-    // { \
-    //     return verto_convert(name, 0, NULL); \
-    // } \
-    // verto_ctx * \
-    // verto_default_ ## name() \
-    // { \
-    //     return verto_convert(name, 1, NULL); \
-    // }
+    verto_ctx * \
+    verto_new_ ## name() \
+    { \
+        return verto_convert(name, 0, NULL); \
+    } \
+    verto_ctx * \
+    verto_default_ ## name() \
+    { \
+        return verto_convert(name, 1, NULL); \
+    }
 
 typedef struct {
     /* Required */ verto_mod_ctx *(*ctx_new)();
@@ -76,7 +76,8 @@ typedef struct {
 } verto_module;
 
 
-
+#define verto_convert(name, deflt, ctx) \
+        verto_convert_module(&VERTO_MODULE_TABLE(name), deflt, ctx)
 
 
 

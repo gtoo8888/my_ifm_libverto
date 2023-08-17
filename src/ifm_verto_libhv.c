@@ -55,20 +55,6 @@ libhv_ctx_del(verto_mod_ctx *ctx, const verto_ev *ev, verto_mod_ev *evpriv)
 }
 
 
-// int main() {
-//     time_t current_time;
-//     struct timespec spec;
-//     clock_gettime(CLOCK_REALTIME, &spec);
-//     current_time = spec.tv_sec;
-
-//     // 将time_t转换为毫秒
-//     long long milliseconds = current_time * 1000LL;
-
-//     printf("Current time in milliseconds: %lld\n", milliseconds);
-
-//     return 0;
-// }
-
 static void libhv_timer(htimer_t* timer) {
     printf("time=%lus\n",(unsigned long)time(NULL));
 }
@@ -80,39 +66,56 @@ libhv_ctx_add(verto_mod_ctx *ctx, const verto_ev *ev, verto_ev_flag *flags)
     struct event *priv = NULL;
     struct timeval *timeout = NULL;
     struct timeval tv;
-    int libeventflags = 0;
+    int libhvflags = 0;
 
     // *flags |= verto_get_flags(ev) & VERTO_EV_FLAG_PERSIST;
     // if (verto_get_flags(ev) & VERTO_EV_FLAG_PERSIST)
     //     libeventflags |= EV_PERSIST;
-
+    
     switch (verto_get_type(ev)) {
-    // case VERTO_EV_TYPE_IO:
-    //     if (verto_get_flags(ev) & VERTO_EV_FLAG_IO_READ)
-    //         libeventflags |= EV_READ;
-    //     if (verto_get_flags(ev) & VERTO_EV_FLAG_IO_WRITE)
-    //         libeventflags |= EV_WRITE;
+    case VERTO_EV_TYPE_IO:
+        if (verto_get_flags(ev) & VERTO_EV_FLAG_IO_READ)
+            libhvflags |= HV_READ;
+        if (verto_get_flags(ev) & VERTO_EV_FLAG_IO_WRITE)
+            libhvflags |= HV_WRITE;
+        
+        // hio_t* io = hio_create_socket(loop, host, port, HIO_TYPE_TCP, HIO_CLIENT_SIDE);
+        // sockio = hloop_create_udp_client(loop, host, port);
+
+        // hio_add(io, hio_handle_events, HV_READ);
+        // hio_add(io, hio_handle_events, HV_READ);
+
+        // hio_write(io, buf, readbytes);
+        // hio_read(io);
+        // hio_setcb_close(sockio, on_close);
+        // hio_setcb_read(sockio, on_recv);
+    
     //     priv = event_new(ctx, verto_get_fd(ev), libeventflags,
     //                      libevent_callback, (void *) ev);
-    //     break;
+        break;
     case VERTO_EV_TYPE_TIMEOUT:
         timeout = &tv;
         time_t tmp = verto_get_interval(ev);
         time_t tmp1 = tmp/1000;
         tv.tv_sec = verto_get_interval(ev) / 1000;
         // tv.tv_usec = verto_get_interval(ev) % 1000 * 1000;
-        uint32_t milliseconds = tv.tv_sec * 1000LL;
+        // uint32_t milliseconds = tv.tv_sec * 1000LL;
+        uint32_t milliseconds = 10;
 
         htimer_add(ctx, libhv_timer, milliseconds, INFINITE);
 
         // priv = event_new(ctx, -1, EV_TIMEOUT | libeventflags,
         //                  libevent_callback, (void *) ev);
         break;
-    // case VERTO_EV_TYPE_SIGNAL:
-    //     priv = event_new(ctx, verto_get_signal(ev),
-    //                      EV_SIGNAL | libeventflags,
-    //                      libevent_callback, (void *) ev);
-    //     break;
+    case VERTO_EV_TYPE_SIGNAL:
+        // uint32_t milliseconds2 = 10;
+        // signal_init
+        // signal_handle
+
+        // priv = event_new(ctx, verto_get_signal(ev),
+        //                  EV_SIGNAL | libeventflags,
+        //                  libevent_callback, (void *) ev);
+        break;
     case VERTO_EV_TYPE_IDLE:
     case VERTO_EV_TYPE_CHILD:
     default:

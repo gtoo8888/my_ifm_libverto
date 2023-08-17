@@ -8,6 +8,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O0 -ldl") # c语言编译选项
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w ") # 忽略所有警告和note
 
+include_directories(src)
 
 set(sources_files
   src/main.c
@@ -18,7 +19,10 @@ set(sources_files
   src/ifm_verto_libhv.h
   src/module.h
   src/module.c
-  src/timeout.c
+  test/timeout.c
+  test/signal.c
+  test/write.c
+  test/read.c
 )
 
 find_package(libhv REQUIRED)

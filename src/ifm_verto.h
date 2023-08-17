@@ -5,6 +5,10 @@
 
 #define BUILTIN_MODULE libhv
 
+#define VERTO_SIG_IGN ((verto_callback *) 1)
+
+static int retval = 0;
+
 #ifdef __cplusplus
 extern "C"
 {
