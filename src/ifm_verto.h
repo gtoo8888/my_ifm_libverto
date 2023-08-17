@@ -81,6 +81,12 @@ verto_add_timeout(verto_ctx *ctx, verto_ev_flag flags,
 int
 verto_get_fd(const verto_ev *ev);
 
+verto_ev_type
+verto_get_type(const verto_ev *ev);
+
+time_t
+verto_get_interval(const verto_ev *ev);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

@@ -131,10 +131,11 @@ load_module(const char *impl, verto_ev_type reqtypes, module_record **record)
 #endif
 
     static module_record *t1 = &builtin_record;
+    static module_record *loaded_modules2 = &builtin_record;
     /* Check the cache */
     mutex_lock(&loaded_modules_mutex);
     if (impl) {
-        for (*record = loaded_modules ; *record ; *record = (*record)->next) {
+        for (*record = loaded_modules2 ; *record ; *record = (*record)->next) {
             if ((strchr(impl, '/') && !strcmp(impl, (*record)->filename))
                     || !strcmp(impl, (*record)->module->name)) {
                 mutex_unlock(&loaded_modules_mutex);
@@ -339,7 +340,7 @@ verto_default(const char *impl, verto_ev_type reqtypes)
     if (!load_module(impl, reqtypes, &mr))
         return NULL;
 
-    // return verto_convert_module(mr->module, 1, NULL);
+    return verto_convert_module(mr->module, 1, NULL);
 }
 
 
@@ -446,51 +447,112 @@ verto_cleanup(void)
 }
 
 
+static verto_ev *
+make_ev(verto_ctx *ctx, verto_callback *callback,
+        verto_ev_type type, verto_ev_flag flags)
+{
+    verto_ev *ev = NULL;
 
+    if (!ctx || !callback)
+        return NULL;
+
+    ev = vresize(NULL, sizeof(verto_ev));
+    if (ev) {
+        memset(ev, 0, sizeof(verto_ev));
+        ev->ctx        = ctx;
+        ev->type       = type;
+        ev->callback   = callback;
+        ev->flags      = flags;
+    }
+
+    return ev;
+}
+
+static void
+push_ev(verto_ctx *ctx, verto_ev *ev)
+{
+    verto_ev *tmp;
+
+    if (!ctx || !ev)
+        return;
+
+    tmp = ctx->events;
+    ctx->events = ev;
+    ctx->events->next = tmp;
+}
+
+/* Remove flags we can emulate */
+// 从给定的标志中移除可以模拟的标志
+// 移除了VERTO_EV_FLAG_PERSIST和VERTO_EV_FLAG_IO_CLOSE_FD标志位
+#define make_actual(flags) ((flags) & ~(VERTO_EV_FLAG_PERSIST|VERTO_EV_FLAG_IO_CLOSE_FD))
+
+#define doadd(ev, set, type) \
+    ev = make_ev(ctx, callback, type, flags); \
+    if (ev) { \
+        set; \
+        ev->actual = make_actual(ev->flags); \
+        ev->ev = ctx->module->funcs->ctx_add(ctx->ctx, ev, &ev->actual); \
+        if (!ev->ev) { \
+            vfree(ev); \
+            return NULL; \
+        } \
+        push_ev(ctx, ev); \
+    }
 
 verto_ev *
 verto_add_signal(verto_ctx *ctx, verto_ev_flag flags,
                  verto_callback *callback, int signal)
 {
-//     verto_ev *ev;
+    verto_ev *ev;
 
-//     if (signal < 0)
-//         return NULL;
-// #ifndef WIN32
-//     if (signal == SIGCHLD)
-//         return NULL;
-// #endif
-//     if (callback == VERTO_SIG_IGN) {
-//         callback = signal_ignore;
-//         if (!(flags & VERTO_EV_FLAG_PERSIST))
-//             return NULL;
-//     }
-//     doadd(ev, ev->option.signal = signal, VERTO_EV_TYPE_SIGNAL);
-//     return ev;
+    if (signal < 0)
+        return NULL;
+        
+    // if (callback == VERTO_SIG_IGN) {
+    //     callback = signal_ignore;
+    //     if (!(flags & VERTO_EV_FLAG_PERSIST))
+    //         return NULL;
+    // }
+    doadd(ev, ev->option.signal = signal, VERTO_EV_TYPE_SIGNAL);
+    return ev;
 }
 
 verto_ev *
 verto_add_io(verto_ctx *ctx, verto_ev_flag flags,
              verto_callback *callback, int fd)
 {
-    // verto_ev *ev;
+    verto_ev *ev;
 
-    // if (fd < 0 || !(flags & (VERTO_EV_FLAG_IO_READ | VERTO_EV_FLAG_IO_WRITE)))
-    //     return NULL;
+    if (fd < 0 || !(flags & (VERTO_EV_FLAG_IO_READ | VERTO_EV_FLAG_IO_WRITE)))
+        return NULL;
 
-    // doadd(ev, ev->option.io.fd = fd, VERTO_EV_TYPE_IO);
-    // return ev;
+    doadd(ev, ev->option.io.fd = fd, VERTO_EV_TYPE_IO);
+    return ev;
 }
 
 verto_ev *
 verto_add_timeout(verto_ctx *ctx, verto_ev_flag flags,
                   verto_callback *callback, time_t interval)
 {
-    // verto_ev *ev;
-    // doadd(ev, ev->option.interval = interval, VERTO_EV_TYPE_TIMEOUT);
-    // return ev;
+    verto_ev *ev;
+    doadd(ev, ev->option.interval = interval, VERTO_EV_TYPE_TIMEOUT);
+    return ev;
 }
 
+
+verto_ev_type
+verto_get_type(const verto_ev *ev)
+{
+    return ev->type;
+}
+
+time_t
+verto_get_interval(const verto_ev *ev)
+{
+    if (ev && (ev->type == VERTO_EV_TYPE_TIMEOUT))
+        return ev->option.interval;
+    return 0;
+}
 
 void *
 verto_get_private(const verto_ev *ev)

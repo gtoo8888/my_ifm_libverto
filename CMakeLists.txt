@@ -18,6 +18,7 @@ set(sources_files
   src/ifm_verto_libhv.h
   src/module.h
   src/module.c
+  src/timeout.c
 )
 
 find_package(libhv REQUIRED)

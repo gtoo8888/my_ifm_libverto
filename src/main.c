@@ -50,7 +50,7 @@ int main(int argc,char **argv){
 
     ctx = verto_default(modules_name, VERTO_EV_TYPE_NONE);
 
-    retval = do_test(ctx);
+    retval = do_test_timeout(ctx);
     if (retval != 0) {
         verto_free(ctx);
         return retval;
