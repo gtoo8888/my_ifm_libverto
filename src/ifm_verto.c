@@ -631,6 +631,54 @@ verto_get_fd_state(const verto_ev *ev)
 }
 
 
+void
+verto_fire(verto_ev *ev)
+{
+    void *priv;
+
+    ev->depth++;
+    ev->callback(ev->ctx, ev);
+    ev->depth--;
+
+    if (ev->depth == 0) {
+        if (!(ev->flags & VERTO_EV_FLAG_PERSIST) || ev->deleted)
+            verto_del(ev);
+        else {
+            if (!(ev->actual & VERTO_EV_FLAG_PERSIST)) {
+                ev->actual = make_actual(ev->flags);
+                priv = ev->ctx->module->funcs->ctx_add(ev->ctx->ctx, ev, &ev->actual);
+                assert(priv); /* TODO: create an error callback */
+                ev->ctx->module->funcs->ctx_del(ev->ctx->ctx, ev, ev->ev);
+                ev->ev = priv;
+            }
+
+            if (ev->type == VERTO_EV_TYPE_IO)
+                ev->option.io.state = VERTO_EV_FLAG_NONE;
+            if (ev->type == VERTO_EV_TYPE_CHILD)
+                ev->option.child.status = 0;
+        }
+    }
+}
+
+
+void
+verto_set_fd_state(verto_ev *ev, verto_ev_flag state)
+{
+    /* Filter out only the io flags */
+    state = state & (VERTO_EV_FLAG_IO_READ |
+                     VERTO_EV_FLAG_IO_WRITE |
+                     VERTO_EV_FLAG_IO_ERROR);
+
+    /* Don't report read/write if the socket is closed */
+    if (state & VERTO_EV_FLAG_IO_ERROR)
+        state = VERTO_EV_FLAG_IO_ERROR;
+
+    if (ev && ev->type == VERTO_EV_TYPE_IO)
+        ev->option.io.state = state;
+}
+
+
+
 // #define doadd(ev, set, type) \
 //     ev = make_ev(ctx, callback, type, flags); \
 //     if (ev) { \

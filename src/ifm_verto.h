@@ -88,8 +88,33 @@ verto_get_fd(const verto_ev *ev);
 verto_ev_type
 verto_get_type(const verto_ev *ev);
 
+void *
+verto_get_private(const verto_ev *ev);
+
+// 额外添加的
 time_t
 verto_get_interval(const verto_ev *ev);
+
+verto_ev_flag
+verto_get_fd_state(const verto_ev *ev);
+
+verto_ev_type
+verto_get_supported_types(verto_ctx *ctx);
+
+verto_ev_flag
+verto_get_flags(const verto_ev *ev);
+
+verto_ev_type
+verto_get_type(const verto_ev *ev);
+
+void
+verto_set_private(verto_ev *ev, void *priv, verto_callback *free);
+
+void
+verto_fire(verto_ev *ev);
+
+void
+verto_set_fd_state(verto_ev *ev, verto_ev_flag state);
 
 #ifdef __cplusplus
 } /* extern "C" */
