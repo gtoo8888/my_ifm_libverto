@@ -1,14 +1,21 @@
-
 #include "ifm_verto_libhv.h"
+#include <hv/hloop.h>
+#include <hv/hmain.h>
+#include <signal.h>
+
 #define VERTO_MODULE_TYPES
+struct hevent2verto {
+    hloop_t* loop;
+    verto_ev* ev;
+    hio_t *io;
+    htimer_t *timer;
+    int timeout;
+};
 typedef struct hloop_t verto_mod_ctx;
-typedef struct hevent_t verto_mod_ev;
+// typedef struct hevent_t verto_mod_ev;
+typedef struct hevent2verto verto_mod_ev;
 #include "ifm_verto_module.h"
 
-#include <hv/hloop.h>
-
-static char host[64] = "127.0.0.1";
-static int  port = 80;
 
 // static verto_mod_ctx *
 // libhv_ctx_new(void)
@@ -58,52 +65,56 @@ libhv_ctx_del(verto_mod_ctx *ctx, const verto_ev *ev, verto_mod_ev *evpriv)
 }
 
 
-static void libhv_timer(htimer_t* timer) {
-    printf("time=%lus\n",(unsigned long)time(NULL));
-}
+static timer_count = 0; 
 
-
-static void on_write(hio_t* io, const void* buf, int writebytes) {
-    // if (!io) return;
-    // if (!hio_write_is_complete(io)) return;
-    // http_conn_t* conn = (http_conn_t*)hevent_userdata(io);
-    // http_send_file(conn);
-}
-
-
-static void
-libhv_callback_io_write(hio_t* io, const void* buf, int writebytes)
-{
-
-}
-
-static void
-libhv_callback_io_read(hio_t* io, void* buf, int readbytes)
-{
-
-}
-
-// static void
-// libevent_callback(evutil_socket_t socket, short type, void *data)
 static void
 libhv_callback_io(hio_t* io)
 {
+    timer_count++;
+    printf("timer_count:%d\n",timer_count);
+    struct hevent2verto *h2ve = (struct hevent2verto *)hevent_userdata(io);
     verto_ev_flag state = VERTO_EV_FLAG_NONE;
 
-    void *data;
+    if (verto_get_flags(h2ve->ev) & VERTO_EV_FLAG_IO_READ) {
+        state |= VERTO_EV_FLAG_IO_READ;
+    }
+    if (verto_get_flags(h2ve->ev) & VERTO_EV_FLAG_IO_WRITE) {
+        state |= VERTO_EV_FLAG_IO_WRITE;
+    }
+#ifdef EV_ERROR
+    if (type & EV_ERROR)
+        state |= VERTO_EV_FLAG_IO_ERROR;
+#endif
 
-    (void) socket;
-    
-    // if (io->events & HV_READ)
-    //     state |= VERTO_EV_FLAG_IO_READ;
-    // if (io->events & HV_WRITE)
-    //     state |= VERTO_EV_FLAG_IO_WRITE;
-    verto_set_fd_state(data, state);
-    verto_fire(data);
+    verto_set_fd_state(h2ve->ev, state);
+    verto_fire(h2ve->ev);
 }
 
-// typedef void (*hread_cb)    (hio_t* io, void* buf, int readbytes);
-// typedef void (*hwrite_cb)   (hio_t* io, const void* buf, int writebytes);
+
+static void
+libhv_callback_timer(htimer_t* timer)
+{
+    timer_count++;
+    printf("timer_count:%d\n",timer_count);
+    struct hevent2verto *h2ve = (struct hevent2verto *)hevent_userdata(timer);
+    verto_ev_flag state = VERTO_EV_FLAG_NONE;
+
+
+
+//     if (type & HV_READ)
+//         state |= VERTO_EV_FLAG_IO_READ;
+//     if (type & HV_READ)
+//         state |= VERTO_EV_FLAG_IO_WRITE;
+// #ifdef EV_ERROR
+//     if (type & EV_ERROR)
+//         state |= VERTO_EV_FLAG_IO_ERROR;
+// #endif
+
+    verto_set_fd_state(h2ve->ev, state);
+    verto_fire(h2ve->ev);
+}
+
+
 
 static void libhv_callback_signal(void* userdata) {
     // hlogi("reload confile [%s]", g_main_ctx.confile);
@@ -113,80 +124,47 @@ static void libhv_callback_signal(void* userdata) {
 static verto_mod_ev *
 libhv_ctx_add(verto_mod_ctx *ctx, const verto_ev *ev, verto_ev_flag *flags)
 {
-    struct verto_mod_ev *priv = NULL;
-    struct timeval *timeout = NULL;
-    struct timeval tv;
-    int libhvflags = 0;
+    struct hevent2verto *priv = NULL;
+    priv = malloc(sizeof(struct hevent2verto*));
+    priv->loop = ctx;
+    priv->ev = ev;
+    time_t time_interval;
+    hio_t* io = NULL;
+    int libeventflags = 0;
 
-    // *flags |= verto_get_flags(ev) & VERTO_EV_FLAG_PERSIST;
+    *flags |= verto_get_flags(ev) & VERTO_EV_FLAG_PERSIST; // 控制actual,保证不重复调用
     // if (verto_get_flags(ev) & VERTO_EV_FLAG_PERSIST)
     //     libeventflags |= EV_PERSIST;
-    hio_t* io = hio_create_socket(ctx, host, port, HIO_TYPE_TCP, HIO_CLIENT_SIDE);
 
+    int tmp;
     switch (verto_get_type(ev)) {
     case VERTO_EV_TYPE_IO:
-        // hio_t hio = hio_create(loop, fd, EV_READ, embed_io_cb, NULL);
-        if (verto_get_flags(ev) & VERTO_EV_FLAG_IO_READ){
-            libhvflags |= HV_READ;
-            hio_add(io, libhv_callback_io, HV_READ);
-            hio_setcb_read(io, libhv_callback_io_read);
+        tmp = verto_get_fd(ev);
+        priv->io = hio_get((hloop_t*)ctx, verto_get_fd(ev));
+        if (verto_get_flags(ev) & VERTO_EV_FLAG_IO_READ) {
+            hio_add(priv->io, (hio_cb)libhv_callback_io, HV_READ);
         }
-        if (verto_get_flags(ev) & VERTO_EV_FLAG_IO_WRITE){
-            libhvflags |= HV_WRITE;
-            hio_add(io, libhv_callback_io, HV_WRITE);
-            hio_setcb_write(io, libhv_callback_io_write);
+        if (verto_get_flags(ev) & VERTO_EV_FLAG_IO_WRITE) {
+            hio_add(priv->io, (hio_cb)libhv_callback_io, HV_WRITE);
         }
-        // io = hloop_create_udp_client(loop, host, port);
-
-        // // setuptype(io, libev_callback, verto_get_fd(ev), EV_NONE);
-        // // #define setuptype(io, ...) 
-        // w.io = malloc(sizeof(ev_io)); 
-        // if (w.io) { 
-        //     ev_io_init(w.io, (EV_CB(type, (*))) __VA_ARGS__); 
-        //     ev_io_start(ctx, w.io); 
-        // } 
-        // break
-
-        // hio_add(io, hio_handle_events, HV_READ);
-        // hio_add(io, hio_handle_events, HV_READ);  
-        // hio_setcb_write(io, on_write);
-        // hio_setcb_close(io, on_close);
-        // hio_setcb_read(io, on_recv);
-    
-        // priv = event_new(ctx, verto_get_fd(ev), libeventflags,
-        //                  libevent_callback, (void *) ev);
+        if(priv->io != NULL){
+            hevent_set_userdata(priv->io, priv);
+        }
         break;
     case VERTO_EV_TYPE_TIMEOUT:
-        timeout = &tv;
-        time_t tmp = verto_get_interval(ev);
-        time_t tmp1 = tmp/1000;
-        tv.tv_sec = verto_get_interval(ev) / 1000;
-        // tv.tv_usec = verto_get_interval(ev) % 1000 * 1000;
-        // uint32_t milliseconds = tv.tv_sec * 1000LL;
-        uint32_t milliseconds = 10;
-
-        htimer_add(ctx, libhv_timer, milliseconds, INFINITE);
-
-        // priv = event_new(ctx, -1, EV_TIMEOUT | libeventflags,
-        //                  libevent_callback, (void *) ev);
+        time_interval = verto_get_interval(ev);
+        priv->timer = (htimer_t*)htimer_add((hloop_t*)ctx, (htimer_cb)libhv_callback_timer, time_interval, INFINITE);
+        if(priv->timer != NULL){
+            hevent_set_userdata(priv->timer, priv);
+        }
         break;
     case VERTO_EV_TYPE_SIGNAL:
-        signal_init(libhv_callback_signal);
-        // const char* signal = get_arg("s");
-        // if (signal) {
-        signal_handle(signal);
-        // }
-        // libhvflags = EV_SIGNAL | libhvflags,
-        // ev = verto_add_signal(gpctx->vctx, VERTO_EV_FLAG_PERSIST,
-        //                       hup_handler, SIGHUP);
-        // ev->option.signal = signal
-        // ev->ev = ctx->module->funcs->ctx_add(ctx->ctx, ev, &ev->actual); \    
+        // hevent_t ev;
+        // ev.cb = signal_event_cb;
+        // // ...
+        // hloop_post_event(loop, &ev);
+        // signal(verto_get_signal(ev), signal_func);
 
-        // signal(SIGPIPE, SIG_IGN);
-
-        // priv = event_new(ctx, verto_get_signal(ev),
-        //                  EV_SIGNAL | libeventflags,
-        //                  libevent_callback, (void *) ev);
         break;
     case VERTO_EV_TYPE_IDLE:
     case VERTO_EV_TYPE_CHILD:
@@ -205,14 +183,46 @@ libhv_ctx_add(verto_mod_ctx *ctx, const verto_ev *ev, verto_ev_flag *flags)
     //     event_priority_set(priv, 2);
 
     // event_add(priv, timeout);
-    // return priv;
+    return priv;
 }
 
-#define libhv_ctx_new NULL
-#define libhv_ctx_run_once NULL
-#define libhv_ctx_reinitialize NULL
-#define libhv_ctx_set_flags NULL
-VERTO_MODULE(libhv, event_base_init,
-             VERTO_EV_TYPE_IO |
-             VERTO_EV_TYPE_TIMEOUT |
-             VERTO_EV_TYPE_SIGNAL);
+// #define libhv_ctx_new NULL
+// #define libhv_ctx_run_once NULL
+// #define libhv_ctx_reinitialize NULL
+// #define libhv_ctx_set_flags NULL
+// VERTO_MODULE(libhv, event_base_init,
+//              VERTO_EV_TYPE_IO |
+//              VERTO_EV_TYPE_TIMEOUT |
+//              VERTO_EV_TYPE_SIGNAL);
+
+// #define VERTO_MODULE(name, symb, types) 
+static verto_ctx_funcs libhv_funcs = { 
+    NULL, 
+    libhv_ctx_default, 
+    libhv_ctx_free, 
+    libhv_ctx_run, 
+    NULL, 
+    libhv_ctx_break, 
+    NULL, 
+    NULL, 
+    libhv_ctx_add, 
+    libhv_ctx_del 
+}; 
+verto_module VERTO_MODULE_TABLE(libhv) = { 
+    VERTO_MODULE_VERSION, 
+    "libhv",
+    "event_base_init",
+    VERTO_EV_TYPE_IO | VERTO_EV_TYPE_TIMEOUT | VERTO_EV_TYPE_SIGNAL, 
+    &libhv_funcs, 
+}; 
+verto_ctx * 
+verto_new_libhv() 
+{ 
+    return verto_convert(libhv, 0, NULL); 
+} 
+verto_ctx * 
+verto_default_libhv() 
+{ 
+    return verto_convert(libhv, 1, NULL); 
+}
+

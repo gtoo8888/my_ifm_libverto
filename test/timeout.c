@@ -56,3 +56,25 @@ do_test_timeout(verto_ctx *ctx)
     assert(verto_add_timeout(ctx, VERTO_EV_FLAG_PERSIST, cb, SLEEP));
     return 0;
 }
+
+
+
+
+
+
+static void
+timeout_cb2(verto_ctx *ctx, verto_ev *ev)
+{
+    printf("timeout_cb221 time=%lus\n",(unsigned long)time(NULL));
+}
+
+
+int
+do_test_timeout2(verto_ctx *ctx)
+{
+    callcount = 0;
+    struct timeval starttime;
+    assert(gettimeofday(&starttime, NULL) == 0);
+    assert(verto_add_timeout(ctx, VERTO_EV_FLAG_PERSIST, timeout_cb2, 1000));
+    return 0;
+}

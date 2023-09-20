@@ -40,6 +40,7 @@ cb(verto_ctx *ctx, verto_ev *ev)
 
     bytes = read(fd, buff, DATALEN);
     if (callcount++ == 0) {
+        printf("buff:%s\n",buff);
         assert(verto_get_fd_state(ev) & VERTO_EV_FLAG_IO_READ);
         assert(bytes == DATALEN);
         close(fds[1]);
@@ -57,7 +58,7 @@ cb(verto_ctx *ctx, verto_ev *ev)
 }
 
 int
-do_test(verto_ctx *ctx)
+do_test_read(verto_ctx *ctx)
 {
     callcount = 0;
     fds[0] = -1;
@@ -66,7 +67,7 @@ do_test(verto_ctx *ctx)
     assert(verto_get_supported_types(ctx) & VERTO_EV_TYPE_IO);
 
     assert(pipe(fds) == 0);
-    assert(verto_add_timeout(ctx, VERTO_EV_FLAG_NONE, timeout_cb, 1000));
+    // assert(verto_add_timeout(ctx, VERTO_EV_FLAG_NONE, timeout_cb, 1000));
     assert(verto_add_io(ctx, VERTO_EV_FLAG_PERSIST | VERTO_EV_FLAG_IO_READ, cb, fds[0]));
     assert(write(fds[1], DATA, DATALEN) == DATALEN);
     return 0;

@@ -12,8 +12,8 @@ int main(int argc,char **argv){
 
     ctx = verto_default(modules_name, VERTO_EV_TYPE_NONE);
 
-    // retval = do_test_timeout(ctx);
-    retval = do_test_signal(ctx);
+    retval = do_test_read(ctx);
+    // retval = do_test_timeout2(ctx);
     if (retval != 0) {
         verto_free(ctx);
         return retval;
